@@ -6,6 +6,7 @@ use Config;
 use Html;
 use HTMLForm;
 use MediaWiki\MediaWikiServices;
+use Miraheze\CreateWiki\Hooks\CreateWikiHookRunner;
 use Miraheze\CreateWiki\RemoteWiki;
 use Miraheze\CreateWiki\WikiManager;
 use Miraheze\ManageWiki\FormFactory\ManageWikiFormFactory;
@@ -18,12 +19,18 @@ use SpecialPage;
 use UserGroupMembership;
 
 class SpecialManageWiki extends SpecialPage {
+
 	/** @var Config */
 	private $config;
 
+	/** @var CreateWikiHookRunner */
+	private $createWikiHookRunner;
+
 	public function __construct() {
 		parent::__construct( 'ManageWiki' );
+
 		$this->config = MediaWikiServices::getInstance()->getConfigFactory()->makeConfig( 'managewiki' );
+		$this->createWikiHookRunner = MediaWikiServices::getInstance()->get( 'CreateWikiHookRunner' );
 	}
 
 	public function execute( $par ) {
@@ -130,6 +137,12 @@ class SpecialManageWiki extends SpecialPage {
 			$out->addModules( [ 'mediawiki.special.userrights' ] );
 		}
 
+		$remoteWiki = new RemoteWiki( $wiki, $this->createWikiHookRunner );
+
+		if ( $remoteWiki->isLocked() ) {
+			$out->addHTML( Html::errorBox( $this->msg( 'managewiki-mwlocked' )->escaped() ) );
+		}
+
 		$options = [];
 
 		if ( $module == 'permissions' && !$special ) {
@@ -157,14 +170,12 @@ class SpecialManageWiki extends SpecialPage {
 			$this->reusableFormDescriptor( $module, $options );
 		} else {
 			if ( $module === 'core' ) {
-				$wikiManager = new WikiManager( $wiki );
+				$wikiManager = new WikiManager( $wiki, $this->createWikiHookRunner );
 				if ( !$wikiManager->exists ) {
 					$out->addHTML( Html::errorBox( $this->msg( 'managewiki-missing' )->escaped() ) );
 					return false;
 				}
 			}
-
-			$remoteWiki = new RemoteWiki( $wiki );
 
 			$formFactory = new ManageWikiFormFactory();
 			$htmlForm = $formFactory->getForm( $wiki, $remoteWiki, $this->getContext(), $this->config, $module, strtolower( $special ), $filtered );
